@@ -22,10 +22,10 @@ RUN git clone -b v1.0.0 https://github.com/microsoft/EVA.git /opt/EVA && \
     cmake . && \
     make -j$(nproc)
 
-# --- Python バインディングのインストール ---
-RUN python3 -m pip install -U pip && \
-    python3 -m pip install -e /opt/EVA/python/
+RUN python3 -m pip install -e /opt/EVA/python/
 
+# --- Python バインディングのインストール ---
+RUN python3 -m pip install -U pip
 
 # --- FAISSの導入 ---
 RUN python3 -m pip install numpy faiss-gpu tenseal
