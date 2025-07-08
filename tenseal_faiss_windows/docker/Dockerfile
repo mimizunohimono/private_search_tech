@@ -5,7 +5,7 @@ FROM ubuntu:20.04
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       cmake libboost-all-dev libprotobuf-dev protobuf-compiler \
-      clang git python3 python3-pip python3-venv build-essential && \
+      clang git python3 python3-pip python3-venv build-essential libopencv-dev&& \
     rm -rf /var/lib/apt/lists/*
 
 # --- Microsoft SEAL v3.6.0 のクローン & ビルド ---
@@ -28,8 +28,9 @@ RUN python3 -m pip install -e /opt/EVA/python/
 RUN python3 -m pip install -U pip
 
 # --- FAISSの導入 ---
-RUN python3 -m pip install numpy faiss-gpu tenseal
+RUN python3 -m pip install numpy faiss-cpu tenseal torchvision opencv-python
 
 # --- ワーキングディレクトリ & デフォルトコマンド ---
 WORKDIR /workspace
+COPY ../src/ /workspace/
 CMD [ "bash" ]
