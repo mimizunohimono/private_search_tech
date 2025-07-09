@@ -8,6 +8,7 @@ import faiss
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
+# from torchvision.models import ResNet50_Weights
 from PIL import Image
 
 ## Import for TenSEAL
@@ -82,7 +83,7 @@ def search_from_db(model, transform, query, db):
   ## 1. Client Side
   ## Extract feature from query
   print()
-  print("1. Client Side.")
+  print("Step1. Client Side, Embedding and Encryption")
   q_feat = extract_features(model, transform, query)
   q_feat_f32 = q_feat.astype('float32')
   print(f"{query}'s index: {q_feat_f32}")
@@ -108,7 +109,11 @@ def search_from_db(model, transform, query, db):
   print()
 
   ## Server Side
-  print("2. Server Side.")
+  print("Step2. Server Side, Database construction")
+  print("Already done.")
+  print()
+
+  print("Step3. Server Side, Query matching (Computing cossim)")
   ## Parse from db
   with open(JSON_PATH, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -127,7 +132,7 @@ def search_from_db(model, transform, query, db):
 
   ## Decrypt
   dec_dot_dict = {}
-  print("3. Client Side.")
+  print("Step4. Client Side, Decryption and Sorting")
   for filename, enc_dot in zip(filenames, enc_dot_list):
     dec_dot = enc_dot.decrypt()
     dec_dot_dict[filename] = dec_dot
@@ -139,6 +144,8 @@ def main():
 
   print("Loading model...")
   # 特徴量抽出モデル（ResNet50, 最後のFC層は除外）
+  # weights = ResNet50_Weights.DEFAULT  # 旧 pretrained=True に相当
+  # model = models.resnet50(weights=weights)
   model = models.resnet50(pretrained=True)
   model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
   model.eval()
@@ -149,7 +156,7 @@ def main():
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406],\
-              std=[0.229, 0.224, 0.225])
+                        std=[0.229, 0.224, 0.225])
   ])
 
   ## input
