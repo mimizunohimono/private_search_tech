@@ -52,7 +52,7 @@ index.add(np.array(features_list))
 query_image_path = "query.jpg"
 query_feat = extract_features(query_image_path).astype('float32').reshape(1, -1)
 
-top_k = 1
+top_k = 3
 result_dist, result_index = index.search(query_feat, top_k)
 
 # 検索結果表示

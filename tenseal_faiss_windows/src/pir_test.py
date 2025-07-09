@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+
+## Import for FAISS
+import os
+import cv2
+import numpy as np
+import faiss
+import torch
+import torchvision.models as models
+import torchvision.transforms as transforms
+from PIL import Image
+
+## Import for TenSEAL
+import tenseal as ts
+
+## Others
+import argparse
+import json
+import ast
+
+## Parameters
+IMAGE_DIR = "images"
+JSON_PATH = "index.json"
+
+## Functions
+
+def parse_args():
+  parser = argparse.ArgumentParser(description="Options: --mode, --inp, --db")
+
+  parser.add_argument(
+    "--mode",
+    required=True,
+    choices=["gendb", "search"],
+    help="Please choose a mode during gendb or search "
+  )
+  parser.add_argument("--inp", default="", help="[gendb requirements] query input file")
+  parser.add_argument("--db", default="", help="[gendb requirements] database input file")
+
+  args = parser.parse_args()
+
+  # If --mode == search, you MUST set inp and db 
+  if args.mode == "search":
+    if not args.inp or not args.db:
+      parser.error("If --mode == search, you MUST set inp and db")
+  return args
+
+def extract_features(model, transform, image_path):
+  image = Image.open(image_path).convert('RGB')
+  img_tensor = transform(image).unsqueeze(0)  # shape: (1, 3, 224, 224)
+  with torch.no_grad():
+    features = model(img_tensor).squeeze().numpy()  # shape: (2048,)
+  return features / np.linalg.norm(features)  # 正規化
+
+def save_data_index(model, transform):
+
+  ## Input dir
+  image_dir = IMAGE_DIR
+
+  ## Output list
+  features_list = []
+  image_paths = []
+
+  for fname in os.listdir(image_dir):
+    if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+      path = os.path.join(image_dir, fname)
+      feat = extract_features(model, transform, path)
+      feat_f32 = feat.astype('float32')
+      features_list.append(feat_f32)
+      image_paths.append(path)
+      print(f"path:{path}, index:{feat_f32}")
+
+  ## JSONnize
+  json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(image_paths, features_list)]
+
+  ## Save json file
+  with open(JSON_PATH, "w", encoding="utf-8") as f:
+    json.dump(json_data, f, indent=2, ensure_ascii=False)
+  print(f"Saved in {JSON_PATH} !")
+
+def search_from_db(model, transform, query, db):
+
+  ## 1. Client Side
+  ## Extract feature from query
+  print()
+  print("1. Client Side.")
+  q_feat = extract_features(model, transform, query)
+  q_feat_f32 = q_feat.astype('float32')
+  print(f"{query}'s index: {q_feat_f32}")
+
+  ## Encrypt index
+  def create_context():
+    context = ts.context(
+      ts.SCHEME_TYPE.CKKS,
+      poly_modulus_degree=8192,
+      coeff_mod_bit_sizes=[60, 40, 40, 60]  # 適切な精度
+    )
+    context.global_scale = 2**40
+    context.generate_galois_keys()
+    return context
+  context = create_context()
+  target_input = q_feat_f32
+  enc_vec = ts.ckks_vector(context, target_input)
+  print(f"Encrypted query: {enc_vec}")
+  ## Save encrypted data
+  with open("vector.tenseal", "wb") as f:
+    f.write(enc_vec.serialize())
+  print("Send this query to Server...")
+  print()
+
+  ## Server Side
+  print("2. Server Side.")
+  ## Parse from db
+  with open(JSON_PATH, "r", encoding="utf-8") as f:
+    data = json.load(f)
+  filenames = [entry["filename"] for entry in data]
+  indexes = [entry["index"] for entry in data]
+  print(f"Database: {filenames}")
+  
+  ## Matching
+  enc_dot_list = []
+  for idx in indexes:
+    enc_dot = enc_vec.dot(idx)
+    enc_dot_list.append(enc_dot)
+  print(f"Encrypted dot product: {enc_dot_list}")
+  print("Send this result to Client...")
+  print()
+
+  ## Decrypt
+  dec_dot_dict = {}
+  print("3. Client Side.")
+  for filename, enc_dot in zip(filenames, enc_dot_list):
+    dec_dot = enc_dot.decrypt()
+    dec_dot_dict[filename] = dec_dot
+  dec_dot_dict_sorted =  dict(sorted(dec_dot_dict.items(), key=lambda x: x[1], reverse=True))
+  for key, value in dec_dot_dict_sorted.items():
+    print(f"file:{key}, sim:{value}")
+
+def main():
+
+  print("Loading model...")
+  # 特徴量抽出モデル（ResNet50, 最後のFC層は除外）
+  model = models.resnet50(pretrained=True)
+  model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
+  model.eval()
+  print("Done.")
+
+  # 前処理
+  transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],\
+              std=[0.229, 0.224, 0.225])
+  ])
+
+  ## input
+  args = parse_args()
+  # print(args.mode, args.inp, args.db)
+
+  ## Embedding and Save
+  if args.mode == "gendb":
+    save_data_index(model, transform)
+  
+  ## Search
+  else:
+    search_from_db(model, transform, args.inp, args.db)
+
+if __name__ == "__main__":
+  main()
