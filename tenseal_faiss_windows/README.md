@@ -6,17 +6,19 @@ This repo stores some source code which realize PIR search.
 - Docker/
   - Dockerfile
 - src/
-  - pir_test.py ()
-  - images/ (Save your image files in images/)
+  - pir_test.py (main)
+  - images/ (save your image files in images/)
     - image1.[jpg/jpeg/png]
     - image2.[jpg/jpeg/png]
     - ...
-  - texts/ (Save your text files in texts/)
+  - texts/ (save your text files in texts/)
     - text1.[txt/md]
     - text2.[txt/md]
     - ...
   - image2vec.py (test)
   - vec2enc.py (test)
+  - query.jpg
+  - query.txt
 
 ## How to use
 
