@@ -62,10 +62,11 @@ def parse_args():
 
 def extract_features(model, transform, image_path):
   image = Image.open(image_path).convert('RGB')
-  img_tensor = transform(image).unsqueeze(0)  # shape: (1, 3, 224, 224)
+  img_tensor = transform(image).unsqueeze(0)  
+  # shape: (1, 3, 224, 224)
   with torch.no_grad():
     features = model(img_tensor).squeeze().numpy()  # shape: (2048,)
-  return features / np.linalg.norm(features)  # 正規化
+  return features / np.linalg.norm(features)  # Normalize
 
 def save_data_index(model, transform):
 
@@ -108,7 +109,7 @@ def search_from_db(model, transform, query, db):
     context = ts.context(
       ts.SCHEME_TYPE.CKKS,
       poly_modulus_degree=8192,
-      coeff_mod_bit_sizes=[60, 40, 40, 60]  # 適切な精度
+      coeff_mod_bit_sizes=[60, 40, 40, 60]
     )
     context.global_scale = 2**40
     context.generate_galois_keys()
@@ -158,9 +159,11 @@ def search_from_db(model, transform, query, db):
 def main():
 
   print("Loading model...")
-  # 特徴量抽出モデル（ResNet50, 最後のFC層は除外）
-  # weights = ResNet50_Weights.DEFAULT  # 旧 pretrained=True に相当
+  ## （ResNet50, excluded FC）
+  ## The following expression is better, but it outputs the vector with the expornation nortation, so it leads to BUG now.
+  # weights = ResNet50_Weights.DEFAULT
   # model = models.resnet50(weights=weights)
+
   model = models.resnet50(pretrained=True)
   model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
   model.eval()
