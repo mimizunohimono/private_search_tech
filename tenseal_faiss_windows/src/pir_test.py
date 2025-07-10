@@ -22,11 +22,13 @@ import ast
 ## Parameters
 IMAGE_DIR = "images"
 JSON_PATH = "index.json"
+TXT_EXT_LIST = (".txt", ".dat", ".md")
+IMG_EXT_LIST = (".jpg", ".jpeg", ".png")
 
 ## Functions
 
 def parse_args():
-  parser = argparse.ArgumentParser(description="Options: --mode, --inp, --db")
+  parser = argparse.ArgumentParser(description="Options: --mode, --inp, --db --type")
 
   parser.add_argument(
     "--mode",
@@ -34,15 +36,28 @@ def parse_args():
     choices=["gendb", "search"],
     help="Please choose a mode during gendb or search "
   )
-  parser.add_argument("--inp", default="", help="[gendb requirements] query input file")
-  parser.add_argument("--db", default="", help="[gendb requirements] database input file")
+  parser.add_argument("--inp", default="query.jpg", help="[gendb requirements] query input file")
+  parser.add_argument("--db", default="index.json", help="[gendb requirements] database input file")
+  parser.add_argument("--type", default="image", help="Data type: image(default) or text")
 
   args = parser.parse_args()
 
-  # If --mode == search, you MUST set inp and db 
+  ## If --mode == search, you SHOULD set inp and db 
   if args.mode == "search":
     if not args.inp or not args.db:
-      parser.error("If --mode == search, you MUST set inp and db")
+      parser.error("If --mode == search, you SHOULD set --inp and --db")
+  
+  ## If...
+  ##  -type == image and --inp == hoge.txt ==> Error
+  ##  -type == text and --inp == hoge.jpg ==> Error
+
+  print(os.path.splitext(args.inp) in TXT_EXT_LIST)
+  
+  if args.type == "image" and (os.path.splitext(args.inp)[-1] in TXT_EXT_LIST):
+    parser.error("If --type == image, you SHOULD take a png/jpg/jpeg file as input in --inp")
+  if args.type == "text" and (os.path.splitext(args.inp)[-1] in IMG_EXT_LIST):
+    parser.error("If --type == text, you SHOULD take a txt/dat/md file as input in --inp")
+  
   return args
 
 def extract_features(model, transform, image_path):
@@ -62,7 +77,7 @@ def save_data_index(model, transform):
   image_paths = []
 
   for fname in os.listdir(image_dir):
-    if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+    if fname.lower().endswith(IMG_EXT_LIST):
       path = os.path.join(image_dir, fname)
       feat = extract_features(model, transform, path)
       feat_f32 = feat.astype('float32')
