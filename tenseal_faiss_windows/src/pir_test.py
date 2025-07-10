@@ -9,6 +9,7 @@ import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
 # from torchvision.models import ResNet50_Weights
+from sentence_transformers import SentenceTransformer
 from PIL import Image
 
 ## Import for TenSEAL
@@ -18,9 +19,11 @@ import tenseal as ts
 import argparse
 import json
 import ast
+from typing import List, Tuple
 
 ## Parameters
 IMAGE_DIR = "images"
+TEXT_DIR = "texts"
 JSON_PATH = "index.json"
 TXT_EXT_LIST = (".txt", ".dat", ".md")
 IMG_EXT_LIST = (".jpg", ".jpeg", ".png")
@@ -42,22 +45,20 @@ def parse_args():
 
   args = parser.parse_args()
 
-  ## If --mode == search, you SHOULD set inp and db 
-  if args.mode == "search":
-    if not args.inp or not args.db:
-      parser.error("If --mode == search, you SHOULD set --inp and --db")
-  
-  ## If...
-  ##  -type == image and --inp == hoge.txt ==> Error
-  ##  -type == text and --inp == hoge.jpg ==> Error
 
-  print(os.path.splitext(args.inp) in TXT_EXT_LIST)
-  
-  if args.type == "image" and (os.path.splitext(args.inp)[-1] in TXT_EXT_LIST):
-    parser.error("If --type == image, you SHOULD take a png/jpg/jpeg file as input in --inp")
-  if args.type == "text" and (os.path.splitext(args.inp)[-1] in IMG_EXT_LIST):
-    parser.error("If --type == text, you SHOULD take a txt/dat/md file as input in --inp")
-  
+  if args.mode == "search":
+    ## If --mode == search, you SHOULD set inp and db 
+    if not args.inp or not args.db:
+      parser.error("If --mode == search, you SHOULD set --inp and --db")  
+    ## If...
+    ##  -type == image and --inp == hoge.txt ==> Error
+    ##  -type == text and --inp == hoge.jpg ==> Error
+    
+    if args.type == "image" and (os.path.splitext(args.inp)[-1] in TXT_EXT_LIST):
+      parser.error("If --type == image, you SHOULD take a png/jpg/jpeg file as input in --inp")
+    if args.type == "text" and (os.path.splitext(args.inp)[-1] in IMG_EXT_LIST):
+      parser.error("If --type == text, you SHOULD take a txt/dat/md file as input in --inp")
+    
   return args
 
 def extract_features(model, transform, image_path):
@@ -68,27 +69,49 @@ def extract_features(model, transform, image_path):
     features = model(img_tensor).squeeze().numpy()  # shape: (2048,)
   return features / np.linalg.norm(features)  # Normalize
 
-def save_data_index(model, transform):
+def save_data_index(model, transform, type):
 
-  ## Input dir
-  image_dir = IMAGE_DIR
+  if type == "image":
+    ## Image2Vec
+    ## Input dir
+    image_dir = IMAGE_DIR
 
-  ## Output list
-  features_list = []
-  image_paths = []
+    ## Output list
+    features_list = []
+    image_paths = []
 
-  for fname in os.listdir(image_dir):
-    if fname.lower().endswith(IMG_EXT_LIST):
-      path = os.path.join(image_dir, fname)
-      feat = extract_features(model, transform, path)
-      feat_f32 = feat.astype('float32')
-      features_list.append(feat_f32)
-      image_paths.append(path)
-      print(f"path:{path}, index:{feat_f32}")
+    for fname in os.listdir(image_dir):
+      if fname.lower().endswith(IMG_EXT_LIST):
+        path = os.path.join(image_dir, fname)
+        feat = extract_features(model, transform, path)
+        feat_f32 = feat.astype('float32')
+        features_list.append(feat_f32)
+        image_paths.append(path)
+        print(f"path:{path}, index:{feat_f32}")
 
-  ## JSONnize
-  json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(image_paths, features_list)]
-
+    ## JSONnize
+    json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(image_paths, features_list)]
+  
+  else:
+    ## Text2Vec
+    files = []
+    filename_list = []
+    emb_list = []
+    for fname in os.listdir(TEXT_DIR):
+      path = os.path.join(TEXT_DIR, fname)
+      if os.path.isfile(path) and os.path.splitext(fname)[-1] in TXT_EXT_LIST:
+        with open(path, "r", encoding="utf-8") as f:
+          content = f.read()
+          emb = model.encode(content, convert_to_numpy=True, normalize_embeddings=True)
+          filename_list.append(fname)
+          emb_list.append(emb)
+    ## JSONnize
+    json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(filename_list, emb_list)]
+    
+    ## For debug
+    # for f, c in zip(filenames, contents):
+    #   print(f, len(c))
+  
   ## Save json file
   with open(JSON_PATH, "w", encoding="utf-8") as f:
     json.dump(json_data, f, indent=2, ensure_ascii=False)
@@ -131,7 +154,7 @@ def search_from_db(model, transform, query, db):
 
   print("Step3. Server Side, Query matching (Computing cossim)")
   ## Parse from db
-  with open(JSON_PATH, "r", encoding="utf-8") as f:
+  with open(db, "r", encoding="utf-8") as f:
     data = json.load(f)
   filenames = [entry["filename"] for entry in data]
   indexes = [entry["index"] for entry in data]
@@ -158,15 +181,22 @@ def search_from_db(model, transform, query, db):
 
 def main():
 
+  
+  ## Argument
+  args = parse_args()
+
+  ## Model
   print("Loading model...")
   ## （ResNet50, excluded FC）
   ## The following expression is better, but it outputs the vector with the expornation nortation, so it leads to BUG now.
   # weights = ResNet50_Weights.DEFAULT
   # model = models.resnet50(weights=weights)
-
-  model = models.resnet50(pretrained=True)
-  model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
-  model.eval()
+  if args.type == "image":
+    model = models.resnet50(pretrained=True)
+    model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
+    model.eval()
+  else:
+    model = SentenceTransformer("all-MiniLM-L6-v2")
   print("Done.")
 
   # 前処理
@@ -177,17 +207,13 @@ def main():
                         std=[0.229, 0.224, 0.225])
   ])
 
-  ## input
-  args = parse_args()
-  # print(args.mode, args.inp, args.db)
-
   ## Embedding and Save
   if args.mode == "gendb":
-    save_data_index(model, transform)
+    save_data_index(model, transform, type=args.type)
   
   ## Search
   else:
-    search_from_db(model, transform, args.inp, args.db)
+    search_from_db(model, transform, query=args.inp, db=args.db)
 
 if __name__ == "__main__":
   main()

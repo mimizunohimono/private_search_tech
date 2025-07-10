@@ -3,3 +3,4 @@ faiss-cpu
 tenseal
 torchvision
 opencv-python
+sentence-transformers
