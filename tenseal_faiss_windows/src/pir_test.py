@@ -28,6 +28,8 @@ JSON_PATH = "index.json"
 TXT_EXT_LIST = (".txt", ".dat", ".md")
 IMG_EXT_LIST = (".jpg", ".jpeg", ".png")
 
+PREVIEW_MODE = False
+
 ## Functions
 
 def parse_args():
@@ -93,7 +95,8 @@ def save_data_index(model, transform, type):
         feat_f32 = feat.astype('float32')
         features_list.append(feat_f32)
         image_paths.append(path)
-        print(f"path:{path}, index:{feat_f32}")
+        if PREVIEW_MODE:
+          print(f"path:{path}, index:{feat_f32}")
 
     ## JSONnize
     json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(image_paths, features_list)]
@@ -127,11 +130,13 @@ def search_from_db(model, transform, type, query, db):
 
   ## 1. Client Side
   ## Extract feature from query
-  print()
-  print("Step1. Client Side, Embedding and Encryption")
+  if PREVIEW_MODE:
+    print()
+    print("Step1. Client Side, Embedding and Encryption")
   q_feat = extract_features(model, transform, image_path=query, mode=type)
   q_feat_f32 = q_feat.astype('float32')
-  print(f"{query}'s index: {q_feat_f32}")
+  if PREVIEW_MODE:
+    print(f"{query}'s index: {q_feat_f32}")
 
   ## Encrypt index
   def create_context():
@@ -146,42 +151,47 @@ def search_from_db(model, transform, type, query, db):
   context = create_context()
   target_input = q_feat_f32
   enc_vec = ts.ckks_vector(context, target_input)
-  print(f"Encrypted query: {enc_vec}")
   ## Save encrypted data
   with open("vector.tenseal", "wb") as f:
     f.write(enc_vec.serialize())
-  print("Send this query to Server...")
-  print()
+  if PREVIEW_MODE:
+    print(f"Encrypted query: {enc_vec}")
+    print("Send this query to Server...")
+    print()
 
   ## Server Side
-  print("Step2. Server Side, Database construction")
-  print("Already done.")
-  print()
+  if PREVIEW_MODE:
+    print("Step2. Server Side, Database construction")
+    print("Already done.")
+    print()
 
-  print("Step3. Server Side, Query matching (Computing cossim)")
+    print("Step3. Server Side, Query matching (Computing cossim)")
   ## Parse from db
   with open(db, "r", encoding="utf-8") as f:
     data = json.load(f)
   filenames = [entry["filename"] for entry in data]
   indexes = [entry["index"] for entry in data]
-  print(f"Database: {filenames}")
+  if PREVIEW_MODE:
+    print(f"Database: {filenames}")
   
   ## Matching
   enc_dot_list = []
   for idx in indexes:
     enc_dot = enc_vec.dot(idx)
     enc_dot_list.append(enc_dot)
-  print(f"Encrypted dot product: {enc_dot_list}")
-  print("Send this result to Client...")
-  print()
+  if PREVIEW_MODE:
+    print(f"Encrypted dot product: {enc_dot_list}")
+    print("Send this result to Client...")
+    print()
 
   ## Decrypt
   dec_dot_dict = {}
-  print("Step4. Client Side, Decryption and Sorting")
   for filename, enc_dot in zip(filenames, enc_dot_list):
     dec_dot = enc_dot.decrypt()
     dec_dot_dict[filename] = dec_dot
   dec_dot_dict_sorted =  dict(sorted(dec_dot_dict.items(), key=lambda x: x[1], reverse=True))
+  if PREVIEW_MODE:
+    print("Step4. Client Side, Decryption and Sorting")
   for key, value in dec_dot_dict_sorted.items():
     print(f"file:{key}, sim:{value}")
 
@@ -192,7 +202,8 @@ def main():
   args = parse_args()
 
   ## Model
-  print("Loading model...")
+  if PREVIEW_MODE:
+    print("Loading model...")
   ## （ResNet50, excluded FC）
   ## The following expression is better, but it outputs the vector with the expornation nortation, so it leads to BUG now.
   # weights = ResNet50_Weights.DEFAULT
@@ -203,7 +214,8 @@ def main():
     model.eval()
   else:
     model = SentenceTransformer("all-MiniLM-L6-v2")
-  print("Done.")
+  if PREVIEW_MODE:
+    print("Done.")
 
   # 前処理
   transform = transforms.Compose([
