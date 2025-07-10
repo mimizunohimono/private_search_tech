@@ -61,13 +61,19 @@ def parse_args():
     
   return args
 
-def extract_features(model, transform, image_path):
-  image = Image.open(image_path).convert('RGB')
-  img_tensor = transform(image).unsqueeze(0)  
-  # shape: (1, 3, 224, 224)
-  with torch.no_grad():
-    features = model(img_tensor).squeeze().numpy()  # shape: (2048,)
-  return features / np.linalg.norm(features)  # Normalize
+def extract_features(model, transform, image_path, mode):
+  if mode == "image":
+    image = Image.open(image_path).convert('RGB')
+    img_tensor = transform(image).unsqueeze(0)  
+    # shape: (1, 3, 224, 224)
+    with torch.no_grad():
+      features = model(img_tensor).squeeze().numpy()  # shape: (2048,)
+    return features / np.linalg.norm(features)  # Normalize
+  else:
+    with open(image_path, "r") as f:
+      content = f.read()
+    emb = model.encode(content, convert_to_numpy=True, normalize_embeddings=True)
+    return emb
 
 def save_data_index(model, transform, type):
 
@@ -117,13 +123,13 @@ def save_data_index(model, transform, type):
     json.dump(json_data, f, indent=2, ensure_ascii=False)
   print(f"Saved in {JSON_PATH} !")
 
-def search_from_db(model, transform, query, db):
+def search_from_db(model, transform, type, query, db):
 
   ## 1. Client Side
   ## Extract feature from query
   print()
   print("Step1. Client Side, Embedding and Encryption")
-  q_feat = extract_features(model, transform, query)
+  q_feat = extract_features(model, transform, image_path=query, mode=type)
   q_feat_f32 = q_feat.astype('float32')
   print(f"{query}'s index: {q_feat_f32}")
 
@@ -213,7 +219,7 @@ def main():
   
   ## Search
   else:
-    search_from_db(model, transform, query=args.inp, db=args.db)
+    search_from_db(model, transform, type=args.type, query=args.inp, db=args.db)
 
 if __name__ == "__main__":
   main()
