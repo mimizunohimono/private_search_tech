@@ -8,7 +8,7 @@ import faiss
 import torch
 import torchvision.models as models
 import torchvision.transforms as transforms
-# from torchvision.models import ResNet50_Weights
+from torchvision.models import ResNet50_Weights
 from sentence_transformers import SentenceTransformer
 from PIL import Image
 
@@ -91,15 +91,15 @@ def save_data_index(model, transform, type):
     for fname in os.listdir(image_dir):
       if fname.lower().endswith(IMG_EXT_LIST):
         path = os.path.join(image_dir, fname)
-        feat = extract_features(model, transform, path)
-        feat_f32 = feat.astype('float32')
+        feat = extract_features(model, transform, path, mode=type)
+        feat_f32 = [format(x, '.10f') for x in feat.astype('float32')]
         features_list.append(feat_f32)
         image_paths.append(path)
         if PREVIEW_MODE:
           print(f"path:{path}, index:{feat_f32}")
 
     ## JSONnize
-    json_data = [{"filename": f_name, "index": idx.tolist()} for f_name, idx in zip(image_paths, features_list)]
+    json_data = [{"filename": f_name, "index": idx} for f_name, idx in zip(image_paths, features_list)]
   
   else:
     ## Text2Vec
@@ -134,7 +134,7 @@ def search_from_db(model, transform, type, query, db):
     print()
     print("Step1. Client Side, Embedding and Encryption")
   q_feat = extract_features(model, transform, image_path=query, mode=type)
-  q_feat_f32 = q_feat.astype('float32')
+  q_feat_f32 = [format(x, '.10f') for x in q_feat.astype('float32')]
   if PREVIEW_MODE:
     print(f"{query}'s index: {q_feat_f32}")
 
@@ -196,7 +196,6 @@ def search_from_db(model, transform, type, query, db):
     print(f"file:{key}, sim:{value}")
 
 def main():
-
   
   ## Argument
   args = parse_args()
@@ -204,12 +203,9 @@ def main():
   ## Model
   if PREVIEW_MODE:
     print("Loading model...")
-  ## （ResNet50, excluded FC）
-  ## The following expression is better, but it outputs the vector with the expornation nortation, so it leads to BUG now.
-  # weights = ResNet50_Weights.DEFAULT
-  # model = models.resnet50(weights=weights)
   if args.type == "image":
-    model = models.resnet50(pretrained=True)
+    weights = ResNet50_Weights.DEFAULT
+    model = models.resnet50(weights=weights)
     model = torch.nn.Sequential(*list(model.children())[:-1])  # Global average poolingの前まで
     model.eval()
   else:
